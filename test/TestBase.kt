@@ -5,9 +5,11 @@ import org.jetbrains.kotlinx.lincheck.*
 import org.jetbrains.kotlinx.lincheck.strategy.managed.modelchecking.*
 import org.jetbrains.kotlinx.lincheck.strategy.stress.*
 import org.junit.*
+import org.junit.runners.*
 import java.io.*
 import kotlin.reflect.*
 
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 abstract class TestBase(
     val sequentialSpecification: KClass<*>,
     val checkObstructionFreedom: Boolean = true,
