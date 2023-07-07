@@ -2,31 +2,46 @@
 
 package day2
 
-import kotlinx.atomicfu.*
+import kotlinx.atomicfu.AtomicRef
+import kotlinx.atomicfu.atomic
 
 class MSQueueWithConstantTimeRemove<E> : QueueWithRemove<E> {
-    private val head: AtomicRef<Node<E>>
-    private val tail: AtomicRef<Node<E>>
+    private val head: AtomicRef<Node>
+    private val tail: AtomicRef<Node>
 
     init {
-        val dummy = Node<E>(element = null, prev = null)
+        val dummy = Node(element = null, prev = null)
+        dummy.markExtractedOrRemoved()
         head = atomic(dummy)
         tail = atomic(dummy)
     }
 
     override fun enqueue(element: E) {
-        // TODO: When adding a new node, check whether
-        // TODO: the previous tail is logically removed.
-        // TODO: If so, remove it physically from the linked list.
-        TODO("Implement me!")
+        while (true) {
+            val current = tail.value
+            val next = current.next.value
+            if (next != null) {
+                tail.compareAndSet(current, next)
+                continue
+            }
+            val newNode = Node(element, current)
+            if (current.next.compareAndSet(null, newNode)) {
+                tail.compareAndSet(current, newNode)
+                if (current.extractedOrRemoved) current.physicallyRemove()
+                return
+            }
+        }
     }
 
     override fun dequeue(): E? {
-        // TODO: After moving the `head` pointer forward,
-        // TODO: mark the node that contains the extracting
-        // TODO: element as "extracted or removed", restarting
-        // TODO: the operation if this node has already been removed.
-        TODO("Implement me!")
+        while (true) {
+            val current = head.value
+            val next = current.next.value ?: return null
+            next.prev.value = null
+            if (head.compareAndSet(current, next) && next.markExtractedOrRemoved()) {
+                return next.element
+            }
+        }
     }
 
     override fun remove(element: E): Boolean {
@@ -77,17 +92,13 @@ class MSQueueWithConstantTimeRemove<E> : QueueWithRemove<E> {
         }
     }
 
-    private class Node<E>(
+    private inner class Node(
         var element: E?,
-        prev: Node<E>?
+        prev: Node?
     ) {
-        val next = atomic<Node<E>?>(null)
+        val next = atomic<Node?>(null)
         val prev = atomic(prev)
 
-        /**
-         * TODO: Both [dequeue] and [remove] should mark
-         * TODO: nodes as "extracted or removed".
-         */
         private val _extractedOrRemoved = atomic(false)
         val extractedOrRemoved get() = _extractedOrRemoved.value
 
@@ -99,22 +110,18 @@ class MSQueueWithConstantTimeRemove<E> : QueueWithRemove<E> {
          * removed, or `false` if it has already been
          * removed by [remove] or extracted by [dequeue].
          */
-        fun remove(): Boolean {
-            // TODO: As in the previous task, the removal procedure is split into two phases.
-            // TODO: First, you need to mark the node as "extracted or removed".
-            // TODO: On success, this node is logically removed, and the
-            // TODO: operation should return `true` at the end.
-            // TODO: In the second phase, the node should be removed
-            // TODO: physically, updating the `next` field of the previous
-            // TODO: node to `this.next.value`.
-            // TODO: In this task, you have to maintain the `prev` pointer,
-            // TODO: which references the previous node. Thus, the `remove()`
-            // TODO: complexity becomes O(1) under no contention.
-            // TODO: Do not remove physical head and tail of the linked list;
-            // TODO: it is totally fine to have a bounded number of removed nodes
-            // TODO: in the linked list, especially when it significantly simplifies
-            // TODO: the algorithm.
-            TODO("Implement me!")
+        fun remove(): Boolean = markExtractedOrRemoved().also { if (it) physicallyRemove() }
+
+        fun physicallyRemove() {
+            val next = next.value ?: return
+            // Do not remove tail
+            val previous = prev.value ?: return
+
+            previous.next.compareAndSet(this, next)
+            next.prev.compareAndSet(this, previous)
+
+            if (previous.extractedOrRemoved) previous.physicallyRemove()
+            if (next.extractedOrRemoved) next.physicallyRemove()
         }
     }
 }

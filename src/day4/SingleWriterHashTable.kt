@@ -133,7 +133,7 @@ class SingleWriterHashTable<K : Any, V : Any>(initialCapacity: Int) : HashTable<
                         // Mark the slot available for `put(..)`,
                         // but do not stop on this cell when searching for a key.
                         // For that, replace the key with `REMOVED_KEY`.
-                        keys[index].value = REMOVED_KEY
+//                        keys[index].value = REMOVED_KEY
                         // Read the value associated with the key and replace it with `null`.
                         val oldValue = values[index].value
                         values[index].value = null

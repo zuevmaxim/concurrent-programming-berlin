@@ -1,7 +1,8 @@
 package day3
 
 import day3.AtomicArrayWithCAS2SingleWriter.Status.*
-import kotlinx.atomicfu.*
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.atomicArrayOfNulls
 
 // This implementation never stores `null` values.
 class AtomicArrayWithCAS2SingleWriter<E : Any>(size: Int, initialValue: E) {
@@ -15,8 +16,11 @@ class AtomicArrayWithCAS2SingleWriter<E : Any>(size: Int, initialValue: E) {
     }
 
     fun get(index: Int): E {
-        // TODO: the cell can store CAS2Descriptor
-        return array[index].value as E
+        val value = array[index].value
+        if (value is AtomicArrayWithCAS2SingleWriter<*>.CAS2Descriptor) {
+            return value.read(index) as E
+        }
+        return value as E
     }
 
     fun cas2(
@@ -24,16 +28,12 @@ class AtomicArrayWithCAS2SingleWriter<E : Any>(size: Int, initialValue: E) {
         index2: Int, expected2: E, update2: E
     ): Boolean {
         require(index1 != index2) { "The indices should be different" }
-        // TODO: this implementation is not linearizable,
-        // TODO: use CAS2Descriptor to fix it.
-        // TODO: Note that only one thread can call CAS2!
-        if (array[index1].value != expected1 || array[index2].value != expected2) return false
-        array[index1].value = update1
-        array[index2].value = update2
-        return true
+        val descriptor = CAS2Descriptor(index1, expected1, update1, index2, expected2, update2)
+        descriptor.apply()
+        return descriptor.status.value == SUCCESS
     }
 
-    inner class CAS2Descriptor(
+    private inner class CAS2Descriptor(
         private val index1: Int,
         private val expected1: E,
         private val update1: E,
@@ -43,8 +43,25 @@ class AtomicArrayWithCAS2SingleWriter<E : Any>(size: Int, initialValue: E) {
     ) {
         val status = atomic(UNDECIDED)
 
+        fun read(index: Int): E {
+            check(index == index1 || index == index2)
+            val currentStatus = status.value
+            if (currentStatus == SUCCESS) return if (index == index1) update1 else update2
+            return if (index == index1) expected1 else expected2
+        }
+
         fun apply() {
-            // TODO: install the descriptor, update the status, update the cells.
+            val install1 = array[index1].compareAndSet(expected1, this)
+            val install2 = array[index2].compareAndSet(expected2, this)
+            if (install1 && install2) {
+                status.compareAndSet(UNDECIDED, SUCCESS)
+                array[index1].compareAndSet(this, update1)
+                array[index2].compareAndSet(this, update2)
+            } else {
+                status.compareAndSet(UNDECIDED, FAILED)
+                array[index1].compareAndSet(this, expected1)
+                array[index2].compareAndSet(this, expected2)
+            }
         }
     }
 

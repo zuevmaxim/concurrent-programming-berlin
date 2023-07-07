@@ -1,6 +1,7 @@
 package day2
 
-import kotlinx.atomicfu.*
+import kotlinx.atomicfu.AtomicRef
+import kotlinx.atomicfu.atomic
 
 class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
     private val head: AtomicRef<Node<E>>
@@ -13,18 +14,34 @@ class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
     }
 
     override fun enqueue(element: E) {
-        // TODO: Copy your implementation.
-        TODO("Implement me!")
+        while (true) {
+            val current = tail.value
+            val next = current.next.value
+            if (next != null) {
+                tail.compareAndSet(current, next)
+                continue
+            }
+            val newNode = Node(element)
+            if (current.next.compareAndSet(null, newNode)) {
+                tail.compareAndSet(current, newNode)
+                return
+            }
+        }
     }
 
     override fun dequeue(): E? {
-        // TODO: Copy your implementation.
-        // TODO:
-        // TODO: After moving the `head` pointer forward,
-        // TODO: mark the node that contains the extracting
-        // TODO: element as "extracted or removed", restarting
-        // TODO: the operation if this node has already been removed.
-        TODO("Implement me!")
+        while (true) {
+            val current = head.value
+            val next = current.next.value ?: return null
+            if (next.extractedOrRemoved) {
+                head.compareAndSet(current, next)
+                continue
+            }
+            if (next.markExtractedOrRemoved()) {
+                head.compareAndSet(current, next)
+                return next.element
+            }
+        }
     }
 
     override fun remove(element: E): Boolean {
@@ -54,10 +71,6 @@ class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
     ) {
         val next = atomic<Node<E>?>(null)
 
-        /**
-         * TODO: Both [dequeue] and [remove] should mark
-         * TODO: nodes as "extracted or removed".
-         */
         private val _extractedOrRemoved = atomic(false)
         val extractedOrRemoved get() = _extractedOrRemoved.value
 
@@ -70,12 +83,7 @@ class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
          * removed by [remove] or extracted by [dequeue].
          */
         fun remove(): Boolean {
-            // TODO: You need to mark the node as "extracted or removed".
-            // TODO: On success, this node is logically removed, and the
-            // TODO: operation should return `true`.
-            // TODO: Otherwise, the node is already either extracted or removed,
-            // TODO: so the operation should return `false`.
-            TODO("Implement me!")
+            return markExtractedOrRemoved()
         }
     }
 }

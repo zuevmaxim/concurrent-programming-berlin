@@ -17,7 +17,8 @@ abstract class AbstractBankTest(
     private val bank: Bank
 ) : TestBase(
     sequentialSpecification = BankSequential::class,
-    checkObstructionFreedom = false
+    checkObstructionFreedom = false,
+    scenarios = 50,
 ), Bank {
 
     @Operation
